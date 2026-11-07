@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="description" content="StudyTok turns your documents into bite-sized study notes." />
+  <title>StudyTok — Learn in the flow</title>
+
+  <!-- Tailwind utility CDN; custom CSS below provides the complete visual system. -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
+
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #000000;
+      --panel: #090d10;
+      --panel-2: #10171b;
+      --line: rgba(255,255,255,.10);
+      --muted: #91a1a8;
+      --text: #f4fbfc;
+      --cyan: #00f3ff;
+      --green: #00e69a;
+      --danger: #ff647c;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin:0; min-height:100%; background:var(--bg); color:var(--text); font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    body { overflow:hidden; }
+    button, input { font:inherit; }
+    button { -webkit-tap-highlight-color:transparent; }
+    .app-shell { height:100dvh; max-width:760px; margin:0 auto; display:flex; flex-direction:column; background:#000; position:relative; overflow:hidden; }
+    .topbar { flex:none; padding:calc(12px + var(--safe-top)) 16px 12px; background:rgba(0,0,0,.94); border-bottom:1px solid var(--line); z-index:5; }
+    .brand-mark { width:36px;height:36px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,var(--cyan),var(--green));color:#001014;font-weight:1000;font-size:17px;box-shadow:0 0 24px rgba(0,243,255,.18); }
+    .brand-name { letter-spacing:-.06em; font-weight:900; font-size:22px; line-height:1; }
+    .brand-sub { color:var(--muted); font-size:9px; letter-spacing:.16em; text-transform:uppercase; margin-top:4px; }
+    .search-wrap { position:relative; margin-top:13px; }
+    .search-wrap input { width:100%; border:1px solid var(--line); outline:none; border-radius:13px; background:#0b1013; color:white; padding:11px 14px 11px 40px; font-size:13px; }
+    .search-wrap input:focus { border-color:rgba(0,243,255,.65); box-shadow:0 0 0 3px rgba(0,243,255,.08); }
+    .search-icon { position:absolute; left:14px; top:10px; color:var(--muted); }
+    .progress-area { margin-top:12px; display:flex; align-items:center; gap:10px; }
+    .progress-track { height:4px; background:#182126; border-radius:99px; flex:1; overflow:hidden; }
+    .progress-fill { height:100%; width:0%; background:linear-gradient(90deg,var(--cyan),var(--green)); border-radius:99px; transition:width .2s ease; box-shadow:0 0 12px rgba(0,243,255,.5); }
+    .progress-label { font-size:10px; color:var(--muted); min-width:38px; text-align:right; font-variant-numeric:tabular-nums; }
+    .feed { flex:1; min-height:0; overflow-y:auto; overscroll-behavior-y:contain; scroll-snap-type:y mandatory; scrollbar-width:none; }
+    .feed::-webkit-scrollbar { display:none; }
+    .feed-card { min-height:100%; height:100%; scroll-snap-align:start; scroll-snap-stop:always; padding:20px 20px calc(22px + var(--safe-bottom)); display:flex; flex-direction:column; justify-content:center; position:relative; isolation:isolate; }
+    .feed-card::before { content:""; position:absolute; width:290px;height:290px; border-radius:50%; background:rgba(0,243,255,.045); filter:blur(70px); right:-150px; top:10%; z-index:-1; }
+    .card-meta { display:flex; justify-content:space-between; align-items:center; color:var(--muted); font-size:11px; margin-bottom:24px; gap:12px; }
+    .pill { border:1px solid rgba(0,243,255,.25); background:rgba(0,243,255,.07); color:var(--cyan); padding:6px 10px; border-radius:99px; font-size:10px; font-weight:800; letter-spacing:.08em; text-transform:uppercase; }
+    .note-index { font-size:11px; letter-spacing:.14em; color:var(--green); font-weight:800; }
+    .note-title { font-size:clamp(25px,6.5vw,39px); line-height:1.12; letter-spacing:-.045em; font-weight:900; margin:0 0 18px; max-width:620px; overflow-wrap:anywhere; }
+    .note-body { font-size:clamp(16px,4vw,19px); line-height:1.75; color:#d6e2e5; white-space:pre-wrap; overflow-wrap:anywhere; max-width:640px; }
+    .note-highlight { color:var(--cyan); font-weight:700; }
+    .card-footer { margin-top:28px; display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .read-time { color:var(--muted); font-size:11px; }
+    .action-row { display:flex; gap:8px; }
+    .icon-btn { border:1px solid var(--line); background:#0b1114; color:#d9e6e9; width:42px;height:42px;border-radius:14px; display:grid;place-items:center; cursor:pointer; transition:.18s ease; }
+    .icon-btn:active { transform:scale(.94); }
+    .icon-btn.active { color:var(--green); border-color:rgba(0,230,154,.45); background:rgba(0,230,154,.09); }
+    .icon-btn svg { width:18px;height:18px; }
+    .bottom-bar { flex:none; padding:10px 16px calc(10px + var(--safe-bottom)); background:rgba(0,0,0,.97); border-top:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:12px; z-index:5; }
+    .upload-btn { border:0; border-radius:13px; padding:12px 16px; color:#001012; font-size:12px; font-weight:900; background:linear-gradient(100deg,var(--cyan),#5bffcb); cursor:pointer; display:flex;align-items:center;gap:8px; box-shadow:0 5px 24px rgba(0,243,255,.12); }
+    .upload-btn:disabled { opacity:.55; cursor:wait; }
+    .bottom-hint { color:var(--muted); font-size:10px; text-align:right; line-height:1.45; }
+    .empty-state { height:100%; min-height:350px; padding:30px; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; }
+    .empty-orb { width:74px;height:74px;border:1px solid rgba(0,243,255,.3);border-radius:24px;display:grid;place-items:center;color:var(--cyan);background:rgba(0,243,255,.06);box-shadow:0 0 45px rgba(0,243,255,.08);margin-bottom:22px; }
+    .empty-title { font-size:24px;letter-spacing:-.04em;font-weight:900;margin:0 0 9px; }
+    .empty-copy { max-width:330px;color:var(--muted);font-size:13px;line-height:1.7;margin:0; }
+    .empty-actions { display:flex;gap:9px;flex-wrap:wrap;justify-content:center;margin-top:20px; }
+    .secondary-btn { border:1px solid var(--line);background:#0b1114;color:#dce8eb;border-radius:12px;padding:11px 14px;font-size:12px;font-weight:700;cursor:pointer; }
+    .toast-stack { position:fixed; top:calc(14px + var(--safe-top)); left:50%; transform:translateX(-50%); z-index:30; width:min(92vw,420px); display:flex; flex-direction:column; gap:8px; pointer-events:none; }
+    .toast { padding:12px 14px; border-radius:13px; background:#111a1e; border:1px solid rgba(0,243,255,.25); box-shadow:0 12px 35px rgba(0,0,0,.45); font-size:12px; color:#edfafa; animation:toastIn .2s ease; }
+    .toast.error { border-color:rgba(255,100,124,.5); }
+    .toast.success { border-color:rgba(0,230,154,.5); }
+    @keyframes toastIn { from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)} }
+    .loading-overlay { position:absolute; inset:0; background:rgba(0,0,0,.82); z-index:20; display:none; align-items:center; justify-content:center; flex-direction:column; gap:14px; backdrop-filter:blur(8px); }
+    .loading-overlay.show { display:flex; }
+    .spinner { width:38px;height:38px;border-radius:50%;border:3px solid #243238;border-top-color:var(--cyan);animation:spin .8s linear infinite; }
+    @keyframes spin { to{transform:rotate(360deg)} }
+    .loading-text { color:#d9e9eb;font-size:13px;font-weight:700; }
+    .loading-sub { color:var(--muted);font-size:11px; }
+    .source-line { margin-top:16px; color:#64777e; font-size:10px; overflow-wrap:anywhere; }
+    .hidden-input { display:none; }
+    @media (min-width:600px) {
+      .app-shell { border-left:1px solid #10191d;border-right:1px solid #10191d; }
+      .feed-card { padding-left:42px;padding-right:42px; }
+      .topbar { padding-left:24px;padding-right:24px; }
+      .bottom-bar { padding-left:24px;padding-right:24px; }
+    }
+    @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important; } }
+  </style>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="brand-mark">S</div>
+          <div>
+            <div class="brand-name">Study<span style="color:var(--cyan)">Tok</span></div>
+            <div class="brand-sub">Powered by NOVS Company</div>
+          </div>
+        </div>
+        <div class="pill" id="statusPill">READY TO LEARN</div>
+      </div>
+      <div class="search-wrap">
+        <span class="search-icon" aria-hidden="true">⌕</span>
+        <input id="searchInput" type="search" placeholder="Search your notes..." autocomplete="off" aria-label="Search note cards" />
+      </div>
+      <div class="progress-area">
+        <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+        <div class="progress-label" id="progressLabel">0%</div>
+      </div>
+    </header>
+
+    <section class="feed" id="feed" aria-label="Study notes feed">
+      <div class="empty-state" id="emptyState">
+        <div class="empty-orb" aria-hidden="true">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z"/><path d="M4 5.5v16M8 7h8M8 11h8M8 15h5"/></svg>
+        </div>
+        <h1 class="empty-title">Your next study session<br><span style="color:var(--cyan)">starts here.</span></h1>
+        <p class="empty-copy">Upload a PDF, DOCX, or TXT document. StudyTok will turn its text into short, swipeable learning notes.</p>
+        <div class="empty-actions">
+          <button class="secondary-btn" id="demoBtn" type="button">Explore demo notes</button>
+          <button class="secondary-btn" id="savedBtn" type="button">Saved notes</button>
+        </div>
+      </div>
+    </section>
+
+    <footer class="bottom-bar">
+      <button class="upload-btn" id="uploadBtn" type="button">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 16V4m-5 5 5-5 5 5"/><path d="M4 16v4h16v-4"/></svg>
+        <span id="uploadLabel">Upload document</span>
+      </button>
+      <input class="hidden-input" id="fileInput" type="file" accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain" />
+      <div class="bottom-hint" id="feedHint">Swipe up to move through notes<br>Save the ideas worth keeping</div>
+    </footer>
+
+    <div class="loading-overlay" id="loadingOverlay" role="status" aria-live="polite">
+      <div class="spinner"></div>
+      <div class="loading-text" id="loadingText">Reading your document…</div>
+      <div class="loading-sub" id="loadingSub">Extracting text locally on this device</div>
+    </div>
+  </main>
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+
+  <script>
+    (() => {
+      "use strict";
+
+      const $ = (id) => document.getElementById(id);
+      const feed = $("feed");
+      const emptyState = $("emptyState");
+      const fileInput = $("fileInput");
+      const uploadBtn = $("uploadBtn");
+      const uploadLabel = $("uploadLabel");
+      const searchInput = $("searchInput");
+      const progressFill = $("progressFill");
+      const progressLabel = $("progressLabel");
+      const statusPill = $("statusPill");
+      const loadingOverlay = $("loadingOverlay");
+      const loadingText = $("loadingText");
+      const loadingSub = $("loadingSub");
+
+      const STORAGE_KEY = "studytok_bookmarks_v1";
+      let allNotes = [];
+      let visibleNotes = [];
+      let activeSource = "";
+      let observer = null;
+      let currentIndex = 0;
+      let showingSavedOnly = false;
+
+      if (window.pdfjsLib) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc =
+          "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+      }
+
+      // Telegram Mini App setup. Browser preview remains fully usable without Telegram.
+      const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+      if (tg) {
+        try {
+          tg.ready();
+          tg.expand();
+          const theme = tg.themeParams || {};
+          if (theme.bg_color) document.documentElement.style.setProperty("--tg-bg", theme.bg_color);
+          if (theme.text_color) document.documentElement.style.setProperty("--tg-text", theme.text_color);
+          if (theme.button_color) document.documentElement.style.setProperty("--tg-button", theme.button_color);
+          if (tg.colorScheme === "light") {
+            // Keep the requested black visual identity while honoring Telegram's theme metadata.
+            document.documentElement.dataset.telegramTheme = "light";
+          }
+        } catch (error) {
+          console.warn("Telegram WebApp initialization was unavailable.", error);
+        }
+      }
+
+      function toast(message, type = "info") {
+        const item = document.createElement("div");
+        item.className = `toast ${type === "error" ? "error" : type === "success" ? "success" : ""}`;
+        item.textContent = message;
+        $("toastStack").appendChild(item);
+        window.setTimeout(() => item.remove(), 3400);
+      }
+
+      function setLoading(active, title = "Reading your document…", subtitle = "Extracting text locally on this device") {
+        loadingText.textContent = title;
+        loadingSub.textContent = subtitle;
+        loadingOverlay.classList.toggle("show", active);
+        uploadBtn.disabled = active;
+        uploadLabel.textContent = active ? "Processing…" : "Upload document";
+      }
+
+      function getBookmarks() {
+        try {
+          const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+          return new Set(Array.isArray(parsed) ? parsed : []);
+        } catch {
+          return new Set();
+        }
+      }
+
+      function saveBookmarks(set) {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify([...set]));
+        } catch {
+          toast("Your browser could not save bookmarks. Check device storage.", "error");
+        }
+      }
+
+      function makeId(text, index) {
+        let hash = 2166136261;
+        const source = `${activeSource}|${index}|${text}`;
+        for (let i = 0; i < source.length; i++) {
+          hash ^= source.charCodeAt(i);
+          hash = Math.imul(hash, 16777619);
+        }
+        return `note_${(hash >>> 0).toString(16)}`;
+      }
+
+      function normalizeText(text) {
+        return String(text || "")
+          .replace(/\r\n?/g, "\n")
+          .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, " ")
+          .replace(/[ \t]+/g, " ")
+          .replace(/ *\n */g, "\n")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
+      }
+
+      function splitSentences(text) {
+        const cleaned = normalizeText(text);
+        if (!cleaned) return [];
+        const blocks = cleaned.split(/\n{2,}/).flatMap(block => {
+          const trimmed = block.trim();
+          if (!trimmed) return [];
+          // Keep bullets and headings intact as useful semantic units.
+          if (/^([•*-]|\d+[.)])\s/.test(trimmed) || trimmed.length < 150) return [trimmed];
+          return (trimmed.match(/[^.!?]+[.!?]+(?:["')\]]*)|[^.!?]+$/g) || [trimmed])
+            .map(s => s.trim()).filter(Boolean);
+        });
+        return blocks;
+      }
+
+      function chunkText(text, minChars = 250, maxChars = 350) {
+        const sentences = splitSentences(text);
+        const chunks = [];
+        let buffer = "";
+
+        const pushBuffer = () => {
+          const value = buffer.trim();
+          if (value) chunks.push(value);
+          buffer = "";
+        };
+
+        for (const sentence of sentences) {
+          // Split unusually long sentences at word boundaries so cards remain readable.
+          const pieces = [];
+          if (sentence.length > maxChars * 1.35) {
+            let remaining = sentence;
+            while (remaining.length > maxChars) {
+              let cut = remaining.lastIndexOf(" ", maxChars);
+              if (cut < minChars * 0.55) cut = maxChars;
+              pieces.push(remaining.slice(0, cut).trim());
+              remaining = remaining.slice(cut).trim();
+            }
+            if (remaining) pieces.push(remaining);
+          } else {
+            pieces.push(sentence);
+          }
+
+          for (const piece of pieces) {
+            const candidate = buffer ? `${buffer} ${piece}` : piece;
+            if (candidate.length > maxChars && buffer.length >= minChars * 0.65) {
+              pushBuffer();
+              buffer = piece;
+            } else {
+              buffer = candidate;
+            }
+            if (buffer.length >= maxChars) pushBuffer();
+          }
+        }
+        pushBuffer();
+
+        // Merge tiny trailing cards into the previous card where possible.
+        if (chunks.length > 1 && chunks[chunks.length - 1].length < minChars * 0.55) {
+          const last = chunks.pop();
+          const previous = chunks.pop();
+          if (previous && (previous.length + last.length + 1) <= maxChars * 1.35) {
+            chunks.push(`${previous} ${last}`);
+          } else {
+            chunks.push(previous);
+            chunks.push(last);
+          }
+        }
+        return chunks;
+      }
+
+      function titleFromChunk(chunk, index) {
+        const first = chunk.split(/[.!?]\s|[.!?]$/)[0].trim();
+        const words = first.replace(/^([•*-]|\d+[.)])\s*/, "").split(/\s+/);
+        let title = words.slice(0, 7).join(" ");
+        if (title.length > 54) title = title.slice(0, 51).trimEnd() + "…";
+        return title || `Key idea ${index + 1}`;
+      }
+
+      function estimateMinutes(text) {
+        const words = text.trim().split(/\s+/).filter(Boolean).length;
+        return Math.max(1, Math.ceil(words / 180));
+      }
+
+      function createNotes(text, sourceName) {
+        activeSource = sourceName || "Your document";
+        const chunks = chunkText(text);
+        return chunks.map((content, index) => ({
+          id: makeId(content, index),
+          title: titleFromChunk(content, index),
+          content,
+          minutes: estimateMinutes(content),
+          source: activeSource,
+          index
+        }));
+      }
+
+      async function extractPdf(file) {
+        if (!window.pdfjsLib) throw new Error("PDF reader library did not load. Check your internet connection and try again.");
+        const data = new Uint8Array(await file.arrayBuffer());
+        const pdf = await pdfjsLib.getDocument({ data }).promise;
+        const pages = [];
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+          const page = await pdf.getPage(pageNumber);
+          const content = await page.getTextContent();
+          const strings = content.items.map(item => item.str || "");
+          pages.push(strings.join(" "));
+        }
+        return pages.join("\n\n");
+      }
+
+      async function extractDocx(file) {
+        if (!window.mammoth) throw new Error("DOCX reader library did not load. Check your internet connection and try again.");
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        return result.value || "";
+      }
+
+      async function extractTxt(file) {
+        return await file.text();
+      }
+
+      async function processFile(file) {
+        if (!file) return;
+        const extension = file.name.split(".").pop().toLowerCase();
+        if (!["pdf", "docx", "txt"].includes(extension)) {
+          toast("Unsupported file. Please choose a PDF, DOCX, or TXT file.", "error");
+          return;
+        }
+        if (file.size === 0) {
+          toast("This file is empty. Choose a document with readable text.", "error");
+          return;
+        }
+        if (file.size > 30 * 1024 * 1024) {
+          toast("File is larger than 30 MB. Please upload a smaller document.", "error");
+          return;
+        }
+
+        setLoading(true, "Reading your document…", `Processing ${file.name}`);
+        try {
+          let extracted = "";
+          if (extension === "pdf") extracted = await extractPdf(file);
+          else if (extension === "docx") extracted = await extractDocx(file);
+          else extracted = await extractTxt(file);
+
+          extracted = normalizeText(extracted);
+          if (!extracted || extracted.replace(/\s/g, "").length < 20) {
+            throw new Error("No readable text was found. This may be a scanned image PDF or an empty document.");
+          }
+
+          const notes = createNotes(extracted, file.name);
+          if (!notes.length) throw new Error("The document did not contain enough readable content to create notes.");
+
+          allNotes = notes;
+          showingSavedOnly = false;
+          searchInput.value = "";
+          renderNotes(allNotes);
+          statusPill.textContent = `${notes.length} NOTES READY`;
+          toast(`Created ${notes.length} study notes from ${file.name}.`, "success");
+        } catch (error) {
+          console.error("StudyTok document processing error:", error);
+          toast(error && error.message ? error.message : "Could not read this document. Try another file.", "error");
+        } finally {
+          setLoading(false);
+          fileInput.value = "";
+        }
+      }
+
+      function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, char => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+        }[char]));
+      }
+
+      function highlightText(text, query) {
+        const escaped = escapeHtml(text);
+        if (!query) return escaped;
+        const safeQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        try {
+          return escaped.replace(new RegExp(`(${safeQuery})`, "gi"), '<span class="note-highlight">$1</span>');
+        } catch {
+          return escaped;
+        }
+      }
+
+      const bookmarkIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 4.8A1.8 1.8 0 0 1 7.8 3h8.4A1.8 1.8 0 0 1 18 4.8V21l-6-4-6 4z"/></svg>';
+      const copyIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3"/></svg>';
+      const shareIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.7 10.7 6.6-4.4m-6.6 9 6.6 3.9"/></svg>';
+
+      function renderNotes(notes) {
+        visibleNotes = notes;
+        feed.innerHTML = "";
+        currentIndex = 0;
+        if (!notes.length) {
+          feed.innerHTML = `<div class="empty-state"><div class="empty-orb">⌕</div><h2 class="empty-title">No notes found</h2><p class="empty-copy">Try another keyword or upload a different document.</p><div class="empty-actions"><button class="secondary-btn" id="clearSearchBtn">Clear search</button></div></div>`;
+          $("clearSearchBtn").addEventListener("click", () => { searchInput.value = ""; applyFilters(); });
+          updateProgress(0, 0);
+          return;
+        }
+
+        const bookmarks = getBookmarks();
+        const fragment = document.createDocumentFragment();
+        notes.forEach((note, visibleIndex) => {
+          const article = document.createElement("article");
+          article.className = "feed-card";
+          article.dataset.index = String(visibleIndex);
+          article.dataset.noteId = note.id;
+          const isSaved = bookmarks.has(note.id);
+          const query = searchInput.value.trim();
+          article.innerHTML = `
+            <div class="card-meta">
+              <span class="note-index">NOTE ${String(note.index + 1).padStart(2, "0")} / ${String(allNotes.length).padStart(2, "0")}</span>
+              <span class="pill">${showingSavedOnly ? "SAVED NOTE" : "STUDY CARD"}</span>
+            </div>
+            <h2 class="note-title">${highlightText(note.title, query)}</h2>
+            <div class="note-body">${highlightText(note.content, query)}</div>
+            <div class="source-line">SOURCE · ${escapeHtml(note.source)}</div>
+            <div class="card-footer">
+              <div class="read-time">◷ ${note.minutes} min read <span style="color:#52636a">·</span> ${note.content.trim().split(/\\s+/).length} words</div>
+              <div class="action-row">
+                <button class="icon-btn ${isSaved ? "active" : ""}" data-action="bookmark" aria-label="${isSaved ? "Remove bookmark" : "Bookmark note"}" title="Save note">${bookmarkIcon}</button>
+                <button class="icon-btn" data-action="copy" aria-label="Copy note" title="Copy note">${copyIcon}</button>
+                <button class="icon-btn" data-action="share" aria-label="Share note to Telegram" title="Share to Telegram">${shareIcon}</button>
+              </div>
+            </div>`;
+          fragment.appendChild(article);
+        });
+        feed.appendChild(fragment);
+        observeCards();
+        updateProgress(0, notes.length);
+      }
+
+      function observeCards() {
+        if (observer) observer.disconnect();
+        const cards = [...feed.querySelectorAll(".feed-card")];
+        if (!cards.length) return;
+        observer = new IntersectionObserver(entries => {
+          entries.forEach(entry => {
+            if (entry.isIntersecting && entry.intersectionRatio >= 0.55) {
+              currentIndex = Number(entry.target.dataset.index) || 0;
+              updateProgress(currentIndex, visibleNotes.length);
+            }
+          });
+        }, { root: feed, threshold: [0.55, 0.8] });
+        cards.forEach(card => observer.observe(card));
+      }
+
+      function updateProgress(index, total) {
+        const percent = total ? Math.min(100, Math.round(((index + 1) / total) * 100)) : 0;
+        progressFill.style.width = `${percent}%`;
+        progressLabel.textContent = `${percent}%`;
+      }
+
+      function applyFilters() {
+        const query = searchInput.value.trim().toLowerCase();
+        const bookmarks = getBookmarks();
+        let notes = showingSavedOnly ? allNotes.filter(note => bookmarks.has(note.id)) : [...allNotes];
+        if (query) notes = notes.filter(note => `${note.title} ${note.content} ${note.source}`.toLowerCase().includes(query));
+        renderNotes(notes);
+      }
+
+      async function copyNote(note) {
+        const text = `${note.title}\n\n${note.content}\n\n— StudyTok | Powered by NOVS Company`;
+        try {
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+          } else {
+            const textarea = document.createElement("textarea");
+            textarea.value = text;
+            textarea.style.position = "fixed";
+            textarea.style.opacity = "0";
+            document.body.appendChild(textarea);
+            textarea.select();
+            const copied = document.execCommand("copy");
+            textarea.remove();
+            if (!copied) throw new Error("Copy was blocked by the browser.");
+          }
+          toast("Note copied to clipboard.", "success");
+        } catch {
+          toast("Could not copy this note. Check browser permissions.", "error");
+        }
+      }
+
+      async function shareNote(note) {
+        const text = `${note.title}\n\n${note.content}\n\n— StudyTok | Powered by NOVS Company`;
+        try {
+          if (tg && typeof tg.sendData === "function" && tg.initData) {
+            tg.sendData(JSON.stringify({ type: "studytok_share_note", title: note.title, text: note.content, source: note.source }));
+            toast("Note sent to the StudyTok bot.", "success");
+            return;
+          }
+          const shareUrl = `https://t.me/share/url?url=${encodeURIComponent("https://t.me/")}&text=${encodeURIComponent(text)}`;
+          if (tg && typeof tg.openTelegramLink === "function") {
+            tg.openTelegramLink(shareUrl);
+          } else {
+            window.open(shareUrl, "_blank", "noopener,noreferrer");
+          }
+        } catch (error) {
+          console.error("Telegram share failed:", error);
+          toast("Telegram sharing is unavailable in this browser.", "error");
+        }
+      }
+
+      feed.addEventListener("click", async event => {
+        const button = event.target.closest("button[data-action]");
+        if (!button) return;
+        const card = button.closest(".feed-card");
+        if (!card) return;
+        const note = visibleNotes[Number(card.dataset.index)];
+        if (!note) return;
+
+        if (button.dataset.action === "bookmark") {
+          const bookmarks = getBookmarks();
+          if (bookmarks.has(note.id)) {
+            bookmarks.delete(note.id);
+            toast("Removed from saved notes.");
+          } else {
+            bookmarks.add(note.id);
+            toast("Note saved to this device.", "success");
+          }
+          saveBookmarks(bookmarks);
+          if (showingSavedOnly && !bookmarks.has(note.id)) applyFilters();
+          else button.classList.toggle("active", bookmarks.has(note.id));
+        } else if (button.dataset.action === "copy") {
+          await copyNote(note);
+        } else if (button.dataset.action === "share") {
+          await shareNote(note);
+        }
+      });
+
+      uploadBtn.addEventListener("click", () => fileInput.click());
+      fileInput.addEventListener("change", event => processFile(event.target.files && event.target.files[0]));
+      searchInput.addEventListener("input", applyFilters);
+
+      $("demoBtn").addEventListener("click", () => {
+        const demo = `Photosynthesis is the process by which green plants convert light energy into chemical energy. It mainly takes place in the chloroplasts, which contain the green pigment chlorophyll. During this process, plants use sunlight, water, and carbon dioxide to produce glucose and release oxygen.
+
+The process has two main stages: the light-dependent reactions and the Calvin cycle. Light-dependent reactions occur in the thylakoid membranes. Chlorophyll absorbs light energy, water molecules are split, oxygen is released, and energy carriers ATP and NADPH are produced.
+
+The Calvin cycle takes place in the stroma of the chloroplast. It uses carbon dioxide, ATP, and NADPH to build sugar molecules. The enzyme RuBisCO helps attach carbon dioxide to a five-carbon molecule called RuBP. The cycle eventually produces G3P, which can be used to form glucose and other carbohydrates.
+
+Photosynthesis is important because it supports most food chains, removes carbon dioxide from the atmosphere, and releases oxygen needed by many living organisms. The overall simplified equation is: carbon dioxide + water + light energy → glucose + oxygen.
+
+Factors affecting the rate of photosynthesis include light intensity, carbon dioxide concentration, temperature, and water availability. If one factor is in short supply, it can limit the overall rate even when other factors are abundant.`;
+        allNotes = createNotes(demo, "StudyTok demo · Biology");
+        showingSavedOnly = false;
+        searchInput.value = "";
+        renderNotes(allNotes);
+        statusPill.textContent = `${allNotes.length} DEMO NOTES`;
+        toast("Demo notes loaded. Upload your own document any time.", "success");
+      });
+
+      $("savedBtn").addEventListener("click", () => {
+        if (!allNotes.length) {
+          toast("Upload a document or open the demo before viewing saved notes.");
+          return;
+        }
+        showingSavedOnly = !showingSavedOnly;
+        $("savedBtn").textContent = showingSavedOnly ? "All notes" : "Saved notes";
+        applyFilters();
+        statusPill.textContent = showingSavedOnly ? "SAVED NOTES" : `${allNotes.length} NOTES READY`;
+      });
+
+      // Restore the saved-note view when the app is reopened, if notes exist in this session.
+      window.addEventListener("keydown", event => {
+        if (event.key === "Escape" && searchInput.value) {
+          searchInput.value = "";
+          applyFilters();
+        }
+      });
+
+      // Keep the progress indicator accurate when the user scrolls manually.
+      feed.addEventListener("scroll", () => {
+        const cards = [...feed.querySelectorAll(".feed-card")];
+        if (!cards.length) return;
+        const center = feed.scrollTop + feed.clientHeight * 0.5;
+        let nearest = 0, minDistance = Infinity;
+        cards.forEach((card, index) => {
+          const cardCenter = card.offsetTop + card.offsetHeight * 0.5;
+          const distance = Math.abs(cardCenter - center);
+          if (distance < minDistance) { minDistance = distance; nearest = index; }
+        });
+        if (nearest !== currentIndex) {
+          currentIndex = nearest;
+          updateProgress(nearest, visibleNotes.length);
+        }
+      }, { passive: true });
+    })();
+  </script>
+</body>
+</html>
